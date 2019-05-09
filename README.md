@@ -21,9 +21,9 @@ xhost +local:root
 
 ## Test your installation
 
-All the following commands must be run in the container.
+All the following commands must be run in a container.
 
-1: Update `PYTHONPATH` inside the docker container.
+1: Update `PYTHONPATH`
 
 ```
 export PYTHONPATH=$PYTHONPATH:/PointCloudsPython:/caffe/python
