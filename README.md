@@ -1,6 +1,6 @@
 # Learning 6-DoF Grasping and Pick-Place Using Attention Focus
 
-This is the code for reproducing experiments in the paper, "Learning 6-DoF Grasping and Pick-Place Using Attention Focus".
+This is the code for reproducing experiments in the paper, ["Learning 6-DoF Grasping and Pick-Place Using Attention Focus"](https://arxiv.org/abs/1806.06134).
 
 ## Requirements
 
