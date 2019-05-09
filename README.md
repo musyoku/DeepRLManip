@@ -1,4 +1,25 @@
+# Learning 6-DoF Grasping and Pick-Place Using Attention Focus
+
 This is the code for reproducing experiments in the paper, "Learning 6-DoF Grasping and Pick-Place Using Attention Focus".
+
+## Requirements
+
+- nvidia-docker
+
+## Build docker image
+
+```
+docker build . -t image_name
+docker run --runtime nvidia -it --env="DISPLAY" --env="QT_X11_NO_MITSHM=1" --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" image_name:latest
+```
+
+Update `PYTHONPATH`
+
+```
+export PYTHONPATH=$PYTHONPATH:/PointCloudsPython:/caffe/python
+```
+
+## Running
 
 Prerequisites: OpenRAVE, Caffe, 3DNet models, and Matlab with the Python interface (for GPD comparison).
 
