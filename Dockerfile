@@ -114,7 +114,7 @@ RUN cd caffe && \
     echo "CUDA_ARCH := -gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35 -gencode arch=compute_50,code=sm_50 -gencode arch=compute_50,code=compute_50" >> Makefile.config && \
     make all -j8 && make pycaffe
 
-RUN git clone https://github.com/mgualti/DeepRLManip && \
+RUN git clone https://github.com/musyoku/DeepRLManip && \
     cd DeepRLManip/extensions && \
     sh build.sh 
 

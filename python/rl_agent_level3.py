@@ -9,8 +9,6 @@ from numpy import absolute, argmax, argmin, array, concatenate, dot, exp, hstack
   ones, pi, repeat, stack, tile, vstack, where, zeros
 # openrave
 import openravepy
-# ros
-import tf
 # self
 import hand_descriptor
 from hand_descriptor import HandDescriptor
