@@ -13,24 +13,37 @@ docker build . -t image_name
 docker run --runtime nvidia -it --env="DISPLAY" --env="QT_X11_NO_MITSHM=1" --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" image_name:latest
 ```
 
-Update `PYTHONPATH`
+Adjust the X server host permissions.
+
+```
+xhost +local:root
+```
+
+## Test your installation
+
+All the following commands must be run in the container.
+
+1: Update `PYTHONPATH` inside the docker container.
 
 ```
 export PYTHONPATH=$PYTHONPATH:/PointCloudsPython:/caffe/python
 ```
 
+2: Check if OpenGL is working.
+
+```
+glxgears
+```
+
+3: Check if caffe and point_cloud are installed.
+
+```
+python
+>>> import caffe
+>>> import point_cloud
+>>> 
+```
+
 ## Running
 
-Prerequisites: OpenRAVE, Caffe, 3DNet models, and Matlab with the Python interface (for GPD comparison).
-
-Step 1: Run python/test_models_*.py to generate the model files.
-Step 2: Run python/train_pick_and_place_*.py for joint training of pick and place.
-Step 3: Run python/train_grasping_*.py for the training grasping only.
-Step 4: Run python/test_grasping_*.py for testing the trained grasp agent.
-Step 5: Run python/test_gpd.py to test GPD in the OpenRAVE environment.
-
-Files of interest:
-1) Reward functions are in the rl_environment_*.py files.
-2) HSE3S is implemented in the rl_agent files.
-3) The main training files are train_pick_and_place_*.py.
-4) The "antipodal" condition is defined in rl_environment_grasping.IsAntipodalGrasp.
+Coming soon
