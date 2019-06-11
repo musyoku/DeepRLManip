@@ -6,8 +6,9 @@ import os
 import time
 # scipy
 from scipy.io import savemat
-from numpy import argmax, array, mean
+from numpy import array, mean
 from numpy.random import randint
+from scipy.spatial import cKDTree
 # self
 from rl_environment_placing import RlEnvironmentPlacing
 from rl_agent_level0 import RlAgentLevel0
@@ -16,6 +17,7 @@ from rl_agent_level2 import RlAgentLevel2
 from rl_agent_level3 import RlAgentLevel3
 from rl_agent_level4 import RlAgentLevel4
 from rl_agent_level5 import RlAgentLevel5
+import point_cloud
 
 
 def main():
@@ -29,14 +31,12 @@ def main():
 
     # objects
     nObjects = 10
-    objectFolder = "/DeepRLManip/data/RectangularBlocks"
+    objectFolder = os.getcwd() + "/../../Data/RaveObjects/RectangularBlocks"
     graspColor = [0, 0, 1]
 
     # reaching
-    #nActionSamples = [500, 1000, 361, 181, 361, 303]
-    nActionSamples = [100, 500, 361, 181, 361, 303]
-    #nTrials = 1
-    nTrials = 10
+    nActionSamples = [500, 1000, 361, 181, 361, 303]
+    stateImageWHD = [0.09, 0.09, 0.22]
 
     # view
     viewCenter = array([0, 0, 0])
@@ -45,11 +45,20 @@ def main():
     viewWorkspaceNoTable = [(-1.0, 1.0), (-1.0, 1.0), (0.002, 1.0)]
 
     # learning
-    nEpisodes = 1000
-    epsilon = 0.0
+    nTrainingRounds = 200
+    nScenes = 100
+    nEpisodes = 20
+    minEpsilon = 0.05
+    unbiasOnRound = nTrainingRounds - 5
+    maxExperiences = 50000
+    trainingBatchSize = maxExperiences
+    minTrainBatchSize = 1024
 
     # visualization/saving
     saveFileName = "results.mat"
+    recordLoss = True
+    loadNetwork = False
+    loadDatabase = False
     showViewer = False
     showSteps = False
     plotImages = False
@@ -58,8 +67,11 @@ def main():
     visualizePolicy = False
     if visualizePolicy:
         nEpisodes = 1
+        unbiasOnRound = 0
+        loadNetwork = True
+        loadDatabase = False
         showViewer = True
-        showSteps = False
+        showSteps = True
         plotImages = True
 
     # INITIALIZATION =================================================================================
@@ -70,61 +82,110 @@ def main():
     rlAgents = []
     for i in xrange(nAgents):
         rlAgent = eval("RlAgentLevel" + str(i) + \
-                "(rlEnv, gpuId, False, nActionSamples[i], \"weights-grasp-only-blocks/\")")
+          "(rlEnv, gpuId, False, nActionSamples[i], \"weights-grasp-only-blocks/\")")
         rlAgents.append(rlAgent)
         experiences.append([])
     rlAgents[0].SetSamplingWorkspace(-viewWorkspaceNoTable[2][1],
                                      -viewWorkspaceNoTable[2][0])
 
-    for rlAgent in rlAgents:
-        rlAgent.LoadNetworkWeights()
-        rlAgent.caffeFirstTrain = False
+    if loadNetwork:
+        for rlAgent in rlAgents:
+            rlAgent.LoadNetworkWeights()
+            rlAgent.caffeFirstTrain = False
+
+    if loadDatabase:
+        for i, rlAgent in enumerate(rlAgents):
+            experiences[i] = rlAgent.LoadExperienceDatabase()
 
     # RUN TEST =======================================================================================
 
-    antipodal = []
-    perfect = []
-    episodeTime = []
+    avgReturn = []
+    epsilonRound = []
+    databaseSize = []
+    roundTime = []
+    trainLoss = []
+    testLoss = []
 
-    for episode in xrange(nEpisodes):
+    for i in xrange(len(rlAgents)):
+        trainLoss.append([])
+        testLoss.append([])
+
+    for trainingRound in xrange(nTrainingRounds):
 
         # initialization
-        episodeStartTime = time.time()
+        iterationStartTime = time.time()
+        Return = []
 
-        # place random object in random orientation on table
-        rlAgents[0].MoveHandToHoldingPose()
-        objHandles = rlEnv.PlaceObjects(randint(2, nObjects + 1), objectFolder)
-        if showSteps: raw_input("Placed objects.")
+        # cool exploration and check if it's time to unbias data
+        if trainingRound >= unbiasOnRound:
+            epsilon = 0.0
+        else:
+            epsilon = max(
+                minEpsilon,
+                1.0 - float(len(experiences[0])) / float(maxExperiences))
 
-        # get a point cloud
-        cloudScene, cloudTreeScene = rlAgents[0].GetDualCloud(
-            viewCenter, viewKeepout, viewWorkspace)
-        rlAgents[0].PlotCloud(cloudScene)
-        if showSteps: raw_input("Acquired point cloud.")
-        # grasp an object
-        graspDescs = [None] * nTrials
-        for rlAgent in rlAgents:
-            states, actions, graspDescs, values = rlAgent.SenseAndActSample(
-                None, graspDescs, cloudTreeScene, epsilon)
-            bestIdx = argmax(values)
-            rlAgents[0].PlotDescriptors(graspDescs, graspColor)
-            if plotImages:
-                rlAgent.PlotImages(states[bestIdx], actions[bestIdx])
-            if showSteps: raw_input("Showing grasp samples.")
-        graspDesc = graspDescs[bestIdx]
+        epsilonRound.append(epsilon)
 
-        # evaluate grasp
-        ant, antAndCf = rlEnv.TestGrasp(graspDesc, rlAgents[-1], objHandles)
+        for scene in xrange(nScenes):
 
-        # cleanup this episode
-        print("Episode {}, antipodal={}, antipodal+collisionFree={}".format(
-            episode, ant, antAndCf))
-        antipodal.append(ant)
-        perfect.append(antAndCf)
-        rlEnv.RemoveObjectSet(objHandles)
+            # place random object in random orientation on table
+            rlAgents[0].MoveHandToHoldingPose()
+            objHandles = rlEnv.PlaceObjects(
+                randint(2, nObjects + 1), objectFolder)
+            if showSteps: raw_input("Placed objects.")
+
+            # get a point cloud
+            cloudScene, cloudTreeScene = rlAgents[0].GetDualCloud(
+                viewCenter, viewKeepout, viewWorkspace)
+            rlAgents[0].PlotCloud(cloudScene)
+            if showSteps: raw_input("Acquired point cloud.")
+
+            for episode in xrange(nEpisodes):
+
+                states = []
+                actions = []
+                graspDesc = None
+
+                # grasp an object
+                for rlAgent in rlAgents:
+                    s, a, graspDesc, v = rlAgent.SenseAndAct(
+                        None, graspDesc, cloudTreeScene, epsilon)
+                    rlAgents[0].PlotDescriptors([graspDesc], graspColor)
+                    if plotImages: rlAgent.PlotImages(s, a)
+                    states.append(s)
+                    actions.append(a)
+
+                # evaluate grasp
+                r = rlEnv.TransitionGraspHalfConditions(
+                    graspDesc, rlAgents[-1], objHandles)
+                if showSteps: raw_input("Grasp received reward {}.".format(r))
+
+                # save experiences
+                for i in xrange(nAgents):
+                    experiences[i].append((states[i], actions[i], r))
+
+                # cleanup this episode
+                print("Episode {}.{}.{} had return {}".format(
+                    trainingRound, scene, episode, r))
+                Return.append(r)
+
+            # cleanup this scene
+            rlEnv.RemoveObjectSet(objHandles)
+
+        # Train each agent.
+        for i, rlAgent in enumerate(rlAgents):
+            if len(experiences[i]) < minTrainBatchSize: continue
+            experiences[i] = rlAgent.PruneDatabase(experiences[i],
+                                                   maxExperiences)
+            Dl = rlAgent.DownsampleData(experiences[i], trainingBatchSize)
+            loss = rlAgent.Train(Dl, recordLoss=recordLoss)
+            trainLoss[i].append(loss[0])
+            testLoss[i].append(loss[1])
 
         # Save results
-        episodeTime.append(time.time() - episodeStartTime)
+        avgReturn.append(mean(Return))
+        databaseSize.append(len(experiences[0]))
+        roundTime.append(time.time() - iterationStartTime)
 
         saveData = {
             "gpuId": gpuId,
@@ -136,12 +197,38 @@ def main():
             "viewWorkspace": viewWorkspace,
             "viewWorkspaceNoTable": viewWorkspaceNoTable,
             "nActionSamples": nActionSamples,
-            "nTrials": nTrials,
+            "stateImageWHD": stateImageWHD,
+            "nTrainingRounds": nTrainingRounds,
+            "nScenes": nScenes,
             "nEpisodes": nEpisodes,
-            "antipodal": antipodal,
-            "perfect": perfect
+            "epsilonRound": epsilonRound,
+            "minEpsilon": minEpsilon,
+            "unbiasOnRound": unbiasOnRound,
+            "maxExperiences": maxExperiences,
+            "trainingBatchSize": trainingBatchSize,
+            "minTrainBatchSize": minTrainBatchSize,
+            "avgReturn": avgReturn,
+            "databaseSize": databaseSize,
+            "roundTime": roundTime,
+            "trainLoss0": trainLoss[0],
+            "testLoss0": testLoss[0],
+            "trainLoss1": trainLoss[1],
+            "testLoss1": testLoss[1],
+            "trainLoss2": trainLoss[2],
+            "testLoss2": testLoss[2],
+            "trainLoss3": trainLoss[3],
+            "testLoss3": testLoss[3],
+            "trainLoss4": trainLoss[4],
+            "testLoss4": testLoss[4],
+            "trainLoss5": trainLoss[5],
+            "testLoss5": testLoss[5]
         }
         savemat(saveFileName, saveData)
+
+        # Backup experience database
+        if (trainingRound == nTrainingRounds - 1) or (trainingRound % 10 == 9):
+            for i, rlAgent in enumerate(rlAgents):
+                rlAgent.SaveExperienceDatabase(experiences[i])
 
 
 if __name__ == "__main__":

@@ -17,113 +17,133 @@ from rl_agent_level3 import RlAgentLevel3
 from rl_agent_level4 import RlAgentLevel4
 from rl_agent_level5 import RlAgentLevel5
 
+
 def main():
-  '''Entrypoint to the program.'''
+    '''Entrypoint to the program.'''
 
-  # PARAMETERS =====================================================================================
+    # PARAMETERS =====================================================================================
 
-  # system
-  gpuId = 0
-  nAgents = 6
+    # system
+    gpuId = 0
+    nAgents = 6
 
-  # objects
-  nObjects = 10
-  objectFolder = os.getcwd() + "/../../Data/RaveObjects/RectangularBlocks"
-  graspColor = [0,0,1]
+    # objects
+    nObjects = 10
+    objectFolder = "/DeepRLManip/data/RectangularBlocks"
+    graspColor = [0, 0, 1]
 
-  # reaching
-  #nActionSamples = [500, 1000, 361, 181, 361, 303]
-  nActionSamples = [100, 500, 361, 181, 361, 303]
-  #nTrials = 1
-  nTrials = 10
+    # reaching
+    #nActionSamples = [500, 1000, 361, 181, 361, 303]
+    nActionSamples = [100, 500, 361, 181, 361, 303]
+    #nTrials = 1
+    nTrials = 10
 
-  # view
-  viewCenter = array([0,0,0])
-  viewKeepout = 0.70
-  viewWorkspace = [(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)]
-  viewWorkspaceNoTable = [(-1.0,1.0),(-1.0,1.0),(0.002,1.0)]
+    # view
+    viewCenter = array([0, 0, 0])
+    viewKeepout = 0.70
+    viewWorkspace = [(-1.0, 1.0), (-1.0, 1.0), (-1.0, 1.0)]
+    viewWorkspaceNoTable = [(-1.0, 1.0), (-1.0, 1.0), (0.002, 1.0)]
 
-  # learning
-  nEpisodes = 1000
-  epsilon = 0.0
+    # learning
+    nEpisodes = 1000
+    epsilon = 0.0
 
-  # visualization/saving
-  saveFileName = "results.mat"
-  showViewer = False
-  showSteps = False
-  plotImages = False
-
-  # visualize policy
-  visualizePolicy = False
-  if visualizePolicy:
-    nEpisodes = 1
-    showViewer = True
-    showSteps = True
+    # visualization/saving
+    saveFileName = "results.mat"
+    showViewer = False
+    showSteps = False
     plotImages = False
 
-  # INITIALIZATION =================================================================================
+    # visualize policy
+    visualizePolicy = False
+    if visualizePolicy:
+        nEpisodes = 1
+        showViewer = True
+        showSteps = False
+        plotImages = True
 
-  rlEnv = RlEnvironmentPlacing(showViewer)
+    # INITIALIZATION =================================================================================
 
-  experiences = []
-  rlAgents = []
-  for i in xrange(nAgents):
-    rlAgent = eval("RlAgentLevel" + str(i) + \
-      "(rlEnv, gpuId, False, nActionSamples[i], \"weights-grasp-only-blocks/\")")
-    rlAgents.append(rlAgent)
-    experiences.append([])
-  rlAgents[0].SetSamplingWorkspace(-viewWorkspaceNoTable[2][1], -viewWorkspaceNoTable[2][0])
+    rlEnv = RlEnvironmentPlacing(showViewer)
 
-  for rlAgent in rlAgents:
-    rlAgent.LoadNetworkWeights()
-    rlAgent.caffeFirstTrain = False
+    experiences = []
+    rlAgents = []
+    for i in xrange(nAgents):
+        rlAgent = eval("RlAgentLevel" + str(i) + \
+                "(rlEnv, gpuId, False, nActionSamples[i], \"weights-grasp-only-blocks/\")")
+        rlAgents.append(rlAgent)
+        experiences.append([])
+    rlAgents[0].SetSamplingWorkspace(-viewWorkspaceNoTable[2][1],
+                                     -viewWorkspaceNoTable[2][0])
 
-  # RUN TEST =======================================================================================
-
-  antipodal = []; perfect = []; episodeTime = []
-
-  for episode in xrange(nEpisodes):
-
-    # initialization
-    episodeStartTime = time.time()
-
-    # place random object in random orientation on table
-    rlAgents[0].MoveHandToHoldingPose()
-    objHandles = rlEnv.PlaceObjects(randint(2, nObjects+1), objectFolder)
-    if showSteps: raw_input("Placed objects.")
-
-    # get a point cloud
-    cloudScene, cloudTreeScene = rlAgents[0].GetDualCloud(viewCenter, viewKeepout, viewWorkspace)
-    rlAgents[0].PlotCloud(cloudScene)
-    if showSteps: raw_input("Acquired point cloud.")
-    # grasp an object
-    graspDescs = [None]*nTrials
     for rlAgent in rlAgents:
-      states, actions, graspDescs, values = rlAgent.SenseAndActSample(
-        None, graspDescs, cloudTreeScene, epsilon)
-      bestIdx = argmax(values)
-      rlAgents[0].PlotDescriptors(graspDescs, graspColor)
-      if plotImages: rlAgent.PlotImages(states[bestIdx], actions[bestIdx])
-      if showSteps: raw_input("Showing grasp samples.")
-    graspDesc = graspDescs[bestIdx]
+        rlAgent.LoadNetworkWeights()
+        rlAgent.caffeFirstTrain = False
 
-    # evaluate grasp
-    ant, antAndCf = rlEnv.TestGrasp(graspDesc, rlAgents[-1], objHandles)
+    # RUN TEST =======================================================================================
 
-    # cleanup this episode
-    print("Episode {}, antipodal={}, antipodal+collisionFree={}".format(episode, ant, antAndCf))
-    antipodal.append(ant); perfect.append(antAndCf)
-    rlEnv.RemoveObjectSet(objHandles)
+    antipodal = []
+    perfect = []
+    episodeTime = []
 
-    # Save results
-    episodeTime.append(time.time()-episodeStartTime)
+    for episode in xrange(nEpisodes):
 
-    saveData = {"gpuId":gpuId, "nAgents":nAgents, "nObjects":nObjects, "objectFolder":objectFolder,
-      "viewCenter":viewCenter, "viewKeepout":viewKeepout, "viewWorkspace":viewWorkspace,
-      "viewWorkspaceNoTable":viewWorkspaceNoTable, "nActionSamples":nActionSamples,
-      "nTrials":nTrials, "nEpisodes":nEpisodes, "antipodal":antipodal, "perfect":perfect}
-    savemat(saveFileName, saveData)
+        # initialization
+        episodeStartTime = time.time()
+
+        # place random object in random orientation on table
+        rlAgents[0].MoveHandToHoldingPose()
+        objHandles = rlEnv.PlaceObjects(randint(2, nObjects + 1), objectFolder)
+        if showSteps: raw_input("Placed objects.")
+
+        # get a point cloud
+        cloudScene, cloudTreeScene = rlAgents[0].GetDualCloud(
+            viewCenter, viewKeepout, viewWorkspace)
+        rlAgents[0].PlotCloud(cloudScene)
+        if showSteps: raw_input("Acquired point cloud.")
+        # grasp an object
+        graspDescs = [None] * nTrials
+        for rlAgent in rlAgents:
+            states, actions, graspDescs, values = rlAgent.SenseAndActSample(
+                None, graspDescs, cloudTreeScene, epsilon)
+            bestIdx = argmax(values)
+            rlAgents[0].PlotDescriptors(graspDescs, graspColor)
+            if plotImages:
+                rlAgent.PlotImages(states[bestIdx], actions[bestIdx])
+            if showSteps: raw_input("Showing grasp samples.")
+        graspDesc = graspDescs[bestIdx]
+
+        # evaluate grasp
+        ant, antAndCf = rlEnv.TestGrasp(graspDesc, rlAgents[-1], objHandles)
+
+        # cleanup this episode
+        print("Episode {}, antipodal={}, antipodal+collisionFree={}".format(
+            episode, ant, antAndCf))
+        antipodal.append(ant)
+        perfect.append(antAndCf)
+        rlEnv.RemoveObjectSet(objHandles)
+
+        # Save results
+        episodeTime.append(time.time() - episodeStartTime)
+
+        saveData = {
+            "gpuId": gpuId,
+            "nAgents": nAgents,
+            "nObjects": nObjects,
+            "objectFolder": objectFolder,
+            "viewCenter": viewCenter,
+            "viewKeepout": viewKeepout,
+            "viewWorkspace": viewWorkspace,
+            "viewWorkspaceNoTable": viewWorkspaceNoTable,
+            "nActionSamples": nActionSamples,
+            "nTrials": nTrials,
+            "nEpisodes": nEpisodes,
+            "antipodal": antipodal,
+            "perfect": perfect
+        }
+        savemat(saveFileName, saveData)
+
 
 if __name__ == "__main__":
-  main()
-  exit()
+    main()
+    exit()
