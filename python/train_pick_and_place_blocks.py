@@ -57,7 +57,7 @@ def main():
 
     # visualization/saving
     saveFileName = "results.mat"
-    recordLoss = True
+    recordLoss = False
     loadNetwork = False
     loadDatabase = False
     showViewer = False
@@ -65,7 +65,7 @@ def main():
     plotImages = False
 
     # visualize policy
-    visualizePolicy = True
+    visualizePolicy = False
     if visualizePolicy:
         nEpisodes = 1
         unbiasOnRound = 0
